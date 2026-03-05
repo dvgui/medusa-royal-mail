@@ -10,7 +10,15 @@ export type RoyalMailOrder = {
 }
 
 export type RoyalMailOrderResponse = {
-    orders: RoyalMailOrder[]
+    orders?: RoyalMailOrder[]
+    successCount?: number
+    errorsCount?: number
+    failedOrders?: Array<{
+        errors: Array<{
+            errorCode: number
+            errorMessage: string
+        }>
+    }>
 }
 
 // See Royal Mail API Docs: https://api.parcel.royalmail.com

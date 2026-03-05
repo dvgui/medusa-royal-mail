@@ -82,8 +82,11 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         try {
             // Map Medusa order data to Royal Mail API structure
             const rmOrder = {
-                // Basic mapping example (will be refined based on exact RM API needs)
                 orderReference: order?.display_id?.toString() || order?.id,
+                orderDate: new Date(order?.created_at || Date.now()).toISOString(),
+                subtotal: order?.item_total || 0,
+                shippingCostCharged: order?.shipping_total || 0,
+                total: order?.total || 0,
                 recipient: {
                     address: {
                         fullName: `${order?.shipping_address?.first_name || ''} ${order?.shipping_address?.last_name || ''}`.trim(),
@@ -92,7 +95,7 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                         postcode: order?.shipping_address?.postal_code,
                         countryCode: order?.shipping_address?.country_code?.toUpperCase(),
                     },
-                    phoneNumber: order?.shipping_address?.phone,
+                    phoneNumber: order?.shipping_address?.phone || "0000000000",
                     emailAddress: order?.email,
                 },
                 items: items.map(item => ({
@@ -100,7 +103,7 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                     sku: item.sku,
                     quantity: item.quantity,
                     value: item.unit_price || 0,
-                    weightInGrams: item.weight || 0,
+                    weightInGrams: item.weight || 100, // Fallback to 100g if missing
                 }))
             }
 
@@ -111,6 +114,11 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
             console.log("====== ROYAL MAIL SUCCESS RESPONSE ======")
             console.log(JSON.stringify(response, null, 2))
             console.log("=========================================")
+
+            if (response.errorsCount && response.errorsCount > 0) {
+                const failReasons = JSON.stringify(response.failedOrders, null, 2)
+                throw new Error(`Click & Drop Validation Failed: ${failReasons}`)
+            }
 
             // Return tracking details and any RM specific IDs
             return {
