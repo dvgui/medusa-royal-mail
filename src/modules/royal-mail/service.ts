@@ -9,14 +9,12 @@ import {
     CalculateShippingOptionPriceDTO,
     CalculatedShippingOptionPrice,
     CreateShippingOptionDTO,
-    Query,
 } from "@medusajs/framework/types"
 import { RoyalMailClient } from "../../lib/royal-mail-client/client"
 import { RoyalMailOrder } from "../../lib/royal-mail-client/types"
 
 type InjectedDependencies = {
     logger: Logger
-    query: Query
 }
 
 type Options = {
@@ -27,12 +25,10 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
     static identifier = "royal-mail-fulfillment"
     private client: RoyalMailClient
     private logger_: Logger
-    private query_: Query
 
-    constructor({ logger, query }: InjectedDependencies, options: Options) {
+    constructor({ logger }: InjectedDependencies, options: Options) {
         super()
         this.logger_ = logger
-        this.query_ = query
 
         if (!options.apiKey) {
             this.logger_.warn("[Royal Mail] apiKey is missing in fulfillment module options.")
@@ -92,23 +88,16 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         }
     }
 
-    private async getSmartWeight(variantId: string, currentWeight?: number): Promise<number> {
+    private async getSmartWeight(variantId: string, order: Partial<FulfillmentOrderDTO> | undefined, currentWeight?: number): Promise<number> {
         if (currentWeight && currentWeight > 0) {
             return currentWeight
         }
 
-        try {
-            const { data: [variant] } = await this.query_.graph({
-                entity: "product_variant",
-                fields: ["weight", "product.weight"],
-                filters: { id: variantId },
-            })
+        // Try to find the weight in the order items if available
+        const orderItem = order?.items?.find(i => i.variant_id === variantId)
+        const weight = (orderItem as any)?.variant?.weight || (orderItem as any)?.variant?.product?.weight
 
-            const weight = (variant as any)?.weight || (variant as any)?.product?.weight
-            return weight && weight > 0 ? Number(weight) : 1
-        } catch (e) {
-            return 1
-        }
+        return weight && weight > 0 ? Number(weight) : 1
     }
 
     async createFulfillment(
@@ -143,14 +132,14 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                             const acc = await accPromise
                             const raw = item as any
                             const variantId = raw.variant_id || raw.line_item?.variant_id
-                            const weight = await this.getSmartWeight(variantId, Number(raw.weight))
+                            const weight = await this.getSmartWeight(variantId, order, Number(raw.weight))
                             return acc + (weight * (item.quantity || 1))
                         }, Promise.resolve(0))),
                         packageFormatIdentifier: (data?.package_format_identifier as string) || "parcel",
                         contents: await Promise.all(items.map(async item => {
                             const raw = item as any
                             const variantId = raw.variant_id || raw.line_item?.variant_id
-                            const weight = await this.getSmartWeight(variantId, Number(raw.weight))
+                            const weight = await this.getSmartWeight(variantId, order, Number(raw.weight))
                             return {
                                 name: item.title || "Item",
                                 SKU: item.sku || undefined,
