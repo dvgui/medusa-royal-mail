@@ -1,5 +1,15 @@
 import { AbstractFulfillmentProviderService } from "@medusajs/framework/utils"
-import { Logger } from "@medusajs/framework/types"
+import {
+    Logger,
+    CreateFulfillmentResult,
+    FulfillmentDTO,
+    FulfillmentItemDTO,
+    FulfillmentOrderDTO,
+    FulfillmentOption,
+    CalculateShippingOptionPriceDTO,
+    CalculatedShippingOptionPrice,
+    CreateShippingOptionDTO,
+} from "@medusajs/framework/types"
 import { RoyalMailClient } from "../../lib/royal-mail-client/client"
 
 type Options = {
@@ -27,7 +37,7 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         )
     }
 
-    async getFulfillmentOptions() {
+    async getFulfillmentOptions(): Promise<FulfillmentOption[]> {
         // Return standard shipping options available via Royal Mail.
         // In a real scenario, this could be dynamic, but for click&drop
         // usually merchants set up fixed options like 1st Class, 2nd Class, Tracked 24/48.
@@ -43,7 +53,7 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         optionData: Record<string, unknown>,
         data: Record<string, unknown>,
         context: Record<string, unknown>
-    ) {
+    ): Promise<any> {
         // e.g. check if the customer provided a valid address or phone number if required
         return {
             ...optionData,
@@ -56,16 +66,16 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         return true
     }
 
-    async canCalculate(data: any): Promise<boolean> {
+    async canCalculate(data: CreateShippingOptionDTO): Promise<boolean> {
         // Return false unless we implement dynamic rate calculation via API
         return false
     }
 
     async calculatePrice(
-        optionData: Record<string, unknown>,
-        data: Record<string, unknown>,
-        context: Record<string, unknown>
-    ): Promise<any> {
+        optionData: CalculateShippingOptionPriceDTO["optionData"],
+        data: CalculateShippingOptionPriceDTO["data"],
+        context: CalculateShippingOptionPriceDTO["context"]
+    ): Promise<CalculatedShippingOptionPrice> {
         // Return a dummy price or dynamic price if canCalculate is true
         return {
             calculated_amount: 500, // £5.00
@@ -75,10 +85,10 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
 
     async createFulfillment(
         data: Record<string, unknown>,
-        items: any[],
-        order: any,
-        fulfillment: any
-    ): Promise<any> {
+        items: Partial<Omit<FulfillmentItemDTO, "fulfillment">>[],
+        order: Partial<FulfillmentOrderDTO> | undefined,
+        fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>
+    ): Promise<CreateFulfillmentResult> {
         try {
             // Map Medusa order data to Royal Mail API structure
             const rmOrder = {
@@ -94,20 +104,24 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                     emailAddress: order?.email,
                     ...(order?.shipping_address?.phone ? { phoneNumber: order.shipping_address.phone } : {}),
                 },
-                items: items.map(item => ({
-                    name: item.title,
-                    sku: item.sku,
-                    quantity: item.quantity,
-                    value: item.unit_price || 0,
-                    orderDate: new Date(order?.created_at || Date.now()).toISOString(),
-                    subtotal: order?.item_total || 0,
-                    shippingCostCharged: order?.shipping_total || 0,
-                    total: order?.total || 0,
-                    ...(item.weight ? { weightInGrams: item.weight } : {})
-                }))
+                items: items.map(item => {
+                    // Cast to access runtime properties not on FulfillmentItemDTO
+                    const raw = item as Record<string, unknown>
+                    return {
+                        name: item.title,
+                        sku: item.sku,
+                        quantity: item.quantity,
+                        value: (raw.unit_price as number) || 0,
+                        orderDate: new Date(order?.created_at || Date.now()).toISOString(),
+                        subtotal: order?.item_total || 0,
+                        shippingCostCharged: order?.shipping_total || 0,
+                        total: order?.total || 0,
+                        ...(raw.weight ? { weightInGrams: raw.weight } : {})
+                    }
+                })
             }
 
-            console.log("====== MEDUSA TO ROYAL MAIL PAYLOAD ======")
+            console.log("====== MEDUSA TO ROYAL MAIL PAYLOADdddd ======")
             console.log(JSON.stringify(rmOrder, null, 2))
             console.log("==========================================")
             const response = await this.client.createOrders([rmOrder])
@@ -137,7 +151,7 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         }
     }
 
-    async cancelFulfillment(fulfillment: Record<string, unknown>) {
+    async cancelFulfillment(fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>): Promise<any> {
         // Royal Mail doesn't always support canceling via typical API if labels are printed,
         // but we can try removing order if RM supports it or just mark canceled in Medusa.
         this.logger_.info(`[Royal Mail] Cancel fulfillment requested for ${fulfillment.id}`)
