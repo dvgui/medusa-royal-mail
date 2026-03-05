@@ -112,19 +112,20 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 },
                 packages: [
                     {
-                        weightInGrams: items.reduce((acc, item) => {
+                        weightInGrams: Math.max(1, items.reduce((acc, item) => {
                             const raw = item as Record<string, unknown>
-                            return acc + ((raw.weight as number) || 0) * (item.quantity || 1)
-                        }, 0),
+                            return acc + (Number(raw.weight) || 0) * (item.quantity || 1)
+                        }, 0)),
                         packageFormatIdentifier: (data?.package_format_identifier as string) || "parcel",
                         contents: items.map(item => {
                             const raw = item as Record<string, unknown>
+                            const weight = Number(raw.weight) || 0
                             return {
                                 name: item.title || "Item",
                                 SKU: item.sku || undefined,
                                 quantity: item.quantity || 1,
                                 unitValue: Number((raw.unit_price as any) || 0),
-                                unitWeightInGrams: Number((raw.weight as any) || undefined) || undefined
+                                unitWeightInGrams: Math.max(1, weight)
                             }
                         })
                     }
