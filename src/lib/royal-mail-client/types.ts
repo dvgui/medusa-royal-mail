@@ -34,6 +34,7 @@ export type RoyalMailRecipient = {
 export type RoyalMailPackage = {
     weightInGrams?: number
     packageWeight?: number
+    packageFormatIdentifier?: string
     contents: RoyalMailItem[]
 }
 
