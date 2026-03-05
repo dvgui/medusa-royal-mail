@@ -116,7 +116,7 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                             const raw = item as Record<string, unknown>
                             return acc + ((raw.weight as number) || 0) * (item.quantity || 1)
                         }, 0),
-                        packageFormatIdentifier: "parcel",
+                        packageFormatIdentifier: (data?.package_format_identifier as string) || "parcel",
                         contents: items.map(item => {
                             const raw = item as Record<string, unknown>
                             return {
