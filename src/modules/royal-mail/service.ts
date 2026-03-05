@@ -9,9 +9,15 @@ import {
     CalculateShippingOptionPriceDTO,
     CalculatedShippingOptionPrice,
     CreateShippingOptionDTO,
+    Query,
 } from "@medusajs/framework/types"
 import { RoyalMailClient } from "../../lib/royal-mail-client/client"
 import { RoyalMailOrder } from "../../lib/royal-mail-client/types"
+
+type InjectedDependencies = {
+    logger: Logger
+    query: Query
+}
 
 type Options = {
     apiKey: string
@@ -21,10 +27,12 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
     static identifier = "royal-mail-fulfillment"
     private client: RoyalMailClient
     private logger_: Logger
+    private query_: Query
 
-    constructor(container: { logger: Logger }, options: Options) {
+    constructor({ logger, query }: InjectedDependencies, options: Options) {
         super()
-        this.logger_ = container.logger
+        this.logger_ = logger
+        this.query_ = query
 
         if (!options.apiKey) {
             this.logger_.warn("[Royal Mail] apiKey is missing in fulfillment module options.")
@@ -84,6 +92,25 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         }
     }
 
+    private async getSmartWeight(variantId: string, currentWeight?: number): Promise<number> {
+        if (currentWeight && currentWeight > 0) {
+            return currentWeight
+        }
+
+        try {
+            const { data: [variant] } = await this.query_.graph({
+                entity: "product_variant",
+                fields: ["weight", "product.weight"],
+                filters: { id: variantId },
+            })
+
+            const weight = (variant as any)?.weight || (variant as any)?.product?.weight
+            return weight && weight > 0 ? Number(weight) : 1
+        } catch (e) {
+            return 1
+        }
+    }
+
     async createFulfillment(
         data: Record<string, unknown>,
         items: Partial<Omit<FulfillmentItemDTO, "fulfillment">>[],
@@ -112,22 +139,26 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 },
                 packages: [
                     {
-                        weightInGrams: Math.max(1, items.reduce((acc, item) => {
-                            const raw = item as Record<string, unknown>
-                            return acc + (Number(raw.weight) || 0) * (item.quantity || 1)
-                        }, 0)),
+                        weightInGrams: Math.max(1, await items.reduce(async (accPromise, item) => {
+                            const acc = await accPromise
+                            const raw = item as any
+                            const variantId = raw.variant_id || raw.line_item?.variant_id
+                            const weight = await this.getSmartWeight(variantId, Number(raw.weight))
+                            return acc + (weight * (item.quantity || 1))
+                        }, Promise.resolve(0))),
                         packageFormatIdentifier: (data?.package_format_identifier as string) || "parcel",
-                        contents: items.map(item => {
-                            const raw = item as Record<string, unknown>
-                            const weight = Number(raw.weight) || 0
+                        contents: await Promise.all(items.map(async item => {
+                            const raw = item as any
+                            const variantId = raw.variant_id || raw.line_item?.variant_id
+                            const weight = await this.getSmartWeight(variantId, Number(raw.weight))
                             return {
                                 name: item.title || "Item",
                                 SKU: item.sku || undefined,
                                 quantity: item.quantity || 1,
                                 unitValue: Number((raw.unit_price as any) || 0),
-                                unitWeightInGrams: Math.max(1, weight)
+                                unitWeightInGrams: weight
                             }
-                        })
+                        }))
                     }
                 ]
             }
