@@ -83,10 +83,6 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
             // Map Medusa order data to Royal Mail API structure
             const rmOrder = {
                 orderReference: order?.display_id?.toString() || order?.id,
-                orderDate: new Date(order?.created_at || Date.now()).toISOString(),
-                subtotal: order?.item_total || 0,
-                shippingCostCharged: order?.shipping_total || 0,
-                total: order?.total || 0,
                 recipient: {
                     address: {
                         fullName: `${order?.shipping_address?.first_name || ''} ${order?.shipping_address?.last_name || ''}`.trim(),
@@ -104,6 +100,10 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                     quantity: item.quantity,
                     value: item.unit_price || 0,
                     weightInGrams: item.weight || 100, // Fallback to 100g if missing
+                    orderDate: new Date(order?.created_at || Date.now()).toISOString(),
+                    subtotal: order?.item_total || 0,
+                    shippingCostCharged: order?.shipping_total || 0,
+                    total: order?.total || 0,
                 }))
             }
 
