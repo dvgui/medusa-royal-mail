@@ -11,6 +11,7 @@ import {
     CreateShippingOptionDTO,
 } from "@medusajs/framework/types"
 import { RoyalMailClient } from "../../lib/royal-mail-client/client"
+import { RoyalMailOrder } from "../../lib/royal-mail-client/types"
 
 type Options = {
     apiKey: string
@@ -91,37 +92,45 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
     ): Promise<CreateFulfillmentResult> {
         try {
             // Map Medusa order data to Royal Mail API structure
-            const rmOrder = {
+            const rmOrder: RoyalMailOrder = {
                 orderReference: order?.display_id?.toString() || order?.id,
+                orderDate: new Date(order?.created_at || Date.now()).toISOString(),
+                subtotal: Number(order?.item_total || 0),
+                shippingCostCharged: Number(order?.shipping_total || 0),
+                total: Number(order?.total || 0),
                 recipient: {
                     address: {
                         fullName: `${order?.shipping_address?.first_name || ''} ${order?.shipping_address?.last_name || ''}`.trim(),
-                        addressLine1: order?.shipping_address?.address_1,
-                        city: order?.shipping_address?.city,
-                        postcode: order?.shipping_address?.postal_code,
-                        countryCode: order?.shipping_address?.country_code?.toUpperCase(),
+                        addressLine1: order?.shipping_address?.address_1 || "",
+                        addressLine2: order?.shipping_address?.address_2 || undefined,
+                        city: order?.shipping_address?.city || "",
+                        postcode: order?.shipping_address?.postal_code || "",
+                        countryCode: order?.shipping_address?.country_code?.toUpperCase() || "",
                     },
-                    emailAddress: order?.email,
-                    ...(order?.shipping_address?.phone ? { phoneNumber: order.shipping_address.phone } : {}),
+                    emailAddress: order?.email || undefined,
+                    phoneNumber: order?.shipping_address?.phone || undefined,
                 },
-                items: items.map(item => {
-                    // Cast to access runtime properties not on FulfillmentItemDTO
-                    const raw = item as Record<string, unknown>
-                    return {
-                        name: item.title,
-                        sku: item.sku,
-                        quantity: item.quantity,
-                        value: (raw.unit_price as number) || 0,
-                        orderDate: new Date(order?.created_at || Date.now()).toISOString(),
-                        subtotal: order?.item_total || 0,
-                        shippingCostCharged: order?.shipping_total || 0,
-                        total: order?.total || 0,
-                        ...(raw.weight ? { weightInGrams: raw.weight } : {})
+                packages: [
+                    {
+                        weightInGrams: items.reduce((acc, item) => {
+                            const raw = item as Record<string, unknown>
+                            return acc + ((raw.weight as number) || 0) * (item.quantity || 1)
+                        }, 0),
+                        contents: items.map(item => {
+                            const raw = item as Record<string, unknown>
+                            return {
+                                name: item.title || "Item",
+                                SKU: item.sku || undefined,
+                                quantity: item.quantity || 1,
+                                unitValue: Number((raw.unit_price as any) || 0),
+                                unitWeightInGrams: Number((raw.weight as any) || undefined) || undefined
+                            }
+                        })
                     }
-                })
+                ]
             }
 
-            console.log("====== MEDUSA TO ROYAL MAIL PAYLOADdddd ======")
+            console.log("====== MEDUSA TO ROYAL MAIL PAYLOAD ======")
             console.log(JSON.stringify(rmOrder, null, 2))
             console.log("==========================================")
             const response = await this.client.createOrders([rmOrder])

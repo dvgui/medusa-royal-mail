@@ -1,5 +1,5 @@
 import { Logger } from "@medusajs/framework/types"
-import { RoyalMailClientOptions, RoyalMailOrderResponse } from "./types"
+import { RoyalMailClientOptions, RoyalMailOrderResponse, RoyalMailOrder } from "./types"
 
 export class RoyalMailClient {
     private apiKey_: string
@@ -43,7 +43,7 @@ export class RoyalMailClient {
     /**
      * Creates orders in Click & Drop
      */
-    async createOrders(orders: any[]): Promise<RoyalMailOrderResponse> {
+    async createOrders(orders: RoyalMailOrder[]): Promise<RoyalMailOrderResponse> {
         return this.request<RoyalMailOrderResponse>("/orders", "POST", { items: orders })
     }
 
