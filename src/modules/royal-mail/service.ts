@@ -104,7 +104,13 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 }))
             }
 
+            console.log("====== MEDUSA TO ROYAL MAIL PAYLOAD ======")
+            console.log(JSON.stringify(rmOrder, null, 2))
+            console.log("==========================================")
             const response = await this.client.createOrders([rmOrder])
+            console.log("====== ROYAL MAIL SUCCESS RESPONSE ======")
+            console.log(JSON.stringify(response, null, 2))
+            console.log("=========================================")
 
             // Return tracking details and any RM specific IDs
             return {
@@ -114,6 +120,10 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 labels: []
             }
         } catch (e: any) {
+            console.error("====== CRITICAL ROYAL MAIL API ERROR ======")
+            console.error(e.message)
+            console.error(JSON.stringify(e, null, 2))
+            console.error("=========================================")
             this.logger_.error(`[Royal Mail] Failed to create fulfillment: ${e.message}`)
             throw e
         }
