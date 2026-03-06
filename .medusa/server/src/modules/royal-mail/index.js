@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.provider = exports.ROYAL_MAIL_MODULE = void 0;
 const utils_1 = require("@medusajs/framework/utils");
 const service_1 = require("./service");
-exports.ROYAL_MAIL_MODULE = "royal-mail";
+exports.ROYAL_MAIL_MODULE = "royal_mail";
 exports.default = (0, utils_1.Module)(exports.ROYAL_MAIL_MODULE, {
     service: service_1.RoyalMailProviderService,
 });
