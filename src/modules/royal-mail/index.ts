@@ -8,7 +8,6 @@ export default Module(ROYAL_MAIL_MODULE, {
     service: RoyalMailProviderService,
 })
 
-// Needed for fulfillment provider registration
 export const provider = ModuleProvider(Modules.FULFILLMENT, {
     services: [RoyalMailProviderService],
 })
