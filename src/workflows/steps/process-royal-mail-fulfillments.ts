@@ -12,11 +12,6 @@ export interface ProcessRoyalMailFulfillmentsStepOutput {
 /**
  * Loops over all pending fulfillments, checks each one against the RM API,
  * and creates a Medusa shipment for any that are Despatched.
- *
- * The loop lives here in a step (not in the workflow constructor) because:
- * - Steps are plain async functions — no Medusa constructor constraints apply
- * - transform() in a workflow constructor must be synchronous
- * - workflow.run() can be called from a step
  */
 export const processRoyalMailFulfillmentsStep = createStep(
     "process-royal-mail-fulfillments",
@@ -39,10 +34,6 @@ export const processRoyalMailFulfillmentsStep = createStep(
             try {
                 const order = await client.getOrder(fulfillment.rmOrderIdentifier)
 
-                // TODO: remove this
-                logger.info('ORDER' + JSON.stringify(order, null, 2))
-                order.status = "Despatched"
-                order.trackingNumber = "TEST123456GB"
                 if (order.status !== "Despatched") {
                     logger.info(
                         `[RoyalMail] Fulfillment ${fulfillment.fulfillmentId} status: ${order.status} — skipping`
