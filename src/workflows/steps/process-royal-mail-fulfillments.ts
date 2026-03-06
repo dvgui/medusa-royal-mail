@@ -39,6 +39,10 @@ export const processRoyalMailFulfillmentsStep = createStep(
             try {
                 const order = await client.getOrder(fulfillment.rmOrderIdentifier)
 
+                // TODO: remove this
+                logger.info('ORDER' + JSON.stringify(order, null, 2))
+                order.status = "Despatched"
+                order.trackingNumber = "TEST123456GB"
                 if (order.status !== "Despatched") {
                     logger.info(
                         `[RoyalMail] Fulfillment ${fulfillment.fulfillmentId} status: ${order.status} — skipping`

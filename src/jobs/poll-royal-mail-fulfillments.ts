@@ -33,6 +33,6 @@ export const config = {
         /**
          * Interval in milliseconds — 5 minutes.
          */
-        interval: 5 * 60 * 1000,
+        interval: 1 * 60 * 1000,
     },
 }
