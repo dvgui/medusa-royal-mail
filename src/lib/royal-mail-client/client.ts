@@ -1,5 +1,5 @@
 import { Logger } from "@medusajs/framework/types"
-import { RoyalMailClientOptions, RoyalMailOrderResponse, RoyalMailOrder } from "./types"
+import { RoyalMailClientOptions, RoyalMailOrderResponse, RoyalMailOrder, RoyalMailOrderDetails } from "./types"
 
 export class RoyalMailClient {
     private apiKey_: string
@@ -65,5 +65,12 @@ export class RoyalMailClient {
         }
 
         return await response.blob()
+    }
+
+    /**
+     * Gets order details from Click & Drop
+     */
+    async getOrder(orderIdentifier: string): Promise<RoyalMailOrderDetails> {
+        return this.request<RoyalMailOrderDetails>(`/orders/${orderIdentifier}`, "GET")
     }
 }

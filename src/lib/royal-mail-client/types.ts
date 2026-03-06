@@ -61,4 +61,11 @@ export type RoyalMailOrderResponse = {
     }>
 }
 
+export type RoyalMailOrderDetails = RoyalMailOrder & {
+    orderIdentifier: string
+    status: string
+    trackingNumber?: string
+    trackingUrl?: string
+}
+
 // See Royal Mail API Docs: https://api.parcel.royalmail.com
