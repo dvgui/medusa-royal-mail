@@ -34,18 +34,10 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
             this.logger_.warn("[Royal Mail] apiKey is missing in fulfillment module options.")
         }
 
-        this.client = new RoyalMailClient(
-            {
-                apiKey: options.apiKey,
-            },
-            this.logger_
-        )
+        this.client = new RoyalMailClient({ apiKey: options.apiKey }, this.logger_)
     }
 
     async getFulfillmentOptions(): Promise<FulfillmentOption[]> {
-        // Return standard shipping options available via Royal Mail.
-        // In a real scenario, this could be dynamic, but for click&drop
-        // usually merchants set up fixed options like 1st Class, 2nd Class, Tracked 24/48.
         return [
             { id: "rm-1st-class", name: "Royal Mail 1st Class" },
             { id: "rm-2nd-class", name: "Royal Mail 2nd Class" },
@@ -59,20 +51,14 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         data: Record<string, unknown>,
         context: Record<string, unknown>
     ): Promise<any> {
-        // e.g. check if the customer provided a valid address or phone number if required
-        return {
-            ...optionData,
-            ...data,
-        }
+        return { ...optionData, ...data }
     }
 
     async validateOption(data: Record<string, unknown>) {
-        // Validate if the shipping option is supported by RM
         return true
     }
 
     async canCalculate(data: CreateShippingOptionDTO): Promise<boolean> {
-        // Return false unless we implement dynamic rate calculation via API
         return false
     }
 
@@ -81,22 +67,20 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         data: CalculateShippingOptionPriceDTO["data"],
         context: CalculateShippingOptionPriceDTO["context"]
     ): Promise<CalculatedShippingOptionPrice> {
-        // Return a dummy price or dynamic price if canCalculate is true
         return {
-            calculated_amount: 500, // £5.00
+            calculated_amount: 500,
             is_calculated_price_tax_inclusive: true,
         }
     }
 
-    private async getSmartWeight(variantId: string, order: Partial<FulfillmentOrderDTO> | undefined, currentWeight?: number): Promise<number> {
-        if (currentWeight && currentWeight > 0) {
-            return currentWeight
-        }
-
-        // Try to find the weight in the order items if available
+    private async getSmartWeight(
+        variantId: string,
+        order: Partial<FulfillmentOrderDTO> | undefined,
+        currentWeight?: number
+    ): Promise<number> {
+        if (currentWeight && currentWeight > 0) return currentWeight
         const orderItem = order?.items?.find(i => i.variant_id === variantId)
         const weight = (orderItem as any)?.variant?.weight || (orderItem as any)?.variant?.product?.weight
-
         return weight && weight > 0 ? Number(weight) : 1
     }
 
@@ -107,7 +91,6 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>
     ): Promise<CreateFulfillmentResult> {
         try {
-            // Map Medusa order data to Royal Mail API structure
             const rmOrder: RoyalMailOrder = {
                 orderReference: order?.display_id?.toString() || order?.id,
                 orderDate: new Date(order?.created_at || Date.now()).toISOString(),
@@ -155,7 +138,9 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
             console.log("====== MEDUSA TO ROYAL MAIL PAYLOAD ======")
             console.log(JSON.stringify(rmOrder, null, 2))
             console.log("==========================================")
+
             const response = await this.client.createOrders([rmOrder])
+
             console.log("====== ROYAL MAIL SUCCESS RESPONSE ======")
             console.log(JSON.stringify(response, null, 2))
             console.log("=========================================")
@@ -165,10 +150,17 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 throw new Error(`Click & Drop Validation Failed: ${failReasons}`)
             }
 
-            // Return tracking details and any RM specific IDs
+            const orderIdentifier =
+                response.createdOrders?.[0]?.orderIdentifier ??
+                response.orders?.[0]?.orderIdentifier
+
+            this.logger_.info(
+                `[Royal Mail] Order created successfully. RM identifier: ${orderIdentifier}`
+            )
+
             return {
                 data: {
-                    rmOrderId: response.orders?.[0]?.orderIdentifier,
+                    rmOrderId: String(orderIdentifier),
                 },
                 labels: []
             }
@@ -182,9 +174,9 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         }
     }
 
-    async cancelFulfillment(fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>): Promise<any> {
-        // Royal Mail doesn't always support canceling via typical API if labels are printed,
-        // but we can try removing order if RM supports it or just mark canceled in Medusa.
+    async cancelFulfillment(
+        fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>
+    ): Promise<any> {
         this.logger_.info(`[Royal Mail] Cancel fulfillment requested for ${fulfillment.id}`)
         return {}
     }

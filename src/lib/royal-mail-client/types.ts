@@ -47,8 +47,17 @@ export type RoyalMailItem = {
 }
 
 export type RoyalMailOrderResponse = {
+    createdOrders?: Array<{
+        orderIdentifier: number
+        orderReference: string
+        createdOn?: string
+        orderDate?: string
+        packages?: Array<{ packageNumber: number }>
+        labelErrors?: unknown[]
+        generatedDocuments?: unknown[]
+    }>
     orders?: Array<{
-        orderIdentifier: string
+        orderIdentifier: number
         orderNumber: string
     }>
     successCount?: number
@@ -67,5 +76,4 @@ export type RoyalMailOrderDetails = RoyalMailOrder & {
     trackingNumber?: string
     trackingUrl?: string
 }
-
 // See Royal Mail API Docs: https://api.parcel.royalmail.com

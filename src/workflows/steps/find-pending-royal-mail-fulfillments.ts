@@ -12,7 +12,7 @@ export interface PendingRoyalMailFulfillment {
  * (fulfillment.data.rmOrderId is set by the provider) but not yet shipped.
  *
  * The provider stores the RM identifier in CreateFulfillmentResult.data:
- *   { data: { rmOrderId: response.orders[0].orderIdentifier } }
+ *   { data: { rmOrderId: String(orderIdentifier) } }
  * Medusa persists this on fulfillment.data — NOT fulfillment.metadata.
  */
 export const findPendingRoyalMailFulfillmentsStep = createStep(
@@ -36,11 +36,11 @@ export const findPendingRoyalMailFulfillmentsStep = createStep(
                 (f) =>
                     f.data &&
                     typeof f.data === "object" &&
-                    typeof (f.data as Record<string, unknown>).rmOrderId === "string"
+                    (f.data as Record<string, unknown>).rmOrderId != null
             )
             .map((f) => ({
                 fulfillmentId: f.id,
-                rmOrderIdentifier: (f.data as Record<string, string>).rmOrderId,
+                rmOrderIdentifier: String((f.data as Record<string, unknown>).rmOrderId),
             }))
 
         console.log(
