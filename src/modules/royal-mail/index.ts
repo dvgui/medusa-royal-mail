@@ -1,7 +1,7 @@
 import { ModuleProvider, Modules, Module } from "@medusajs/framework/utils"
 import { RoyalMailProviderService } from "./service"
 
-export const ROYAL_MAIL_MODULE = "royal-mail"
+export const ROYAL_MAIL_MODULE = "royal_mail"
 
 export default Module(ROYAL_MAIL_MODULE, {
     service: RoyalMailProviderService,
