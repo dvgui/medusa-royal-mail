@@ -3,7 +3,6 @@ import { RoyalMailProviderService } from "./service"
 
 export const ROYAL_MAIL_MODULE = "royal-mail"
 
-// Needed for plugins array registration — enables job/workflow scanning
 export default Module(ROYAL_MAIL_MODULE, {
     service: RoyalMailProviderService,
 })
@@ -11,3 +10,9 @@ export default Module(ROYAL_MAIL_MODULE, {
 export const provider = ModuleProvider(Modules.FULFILLMENT, {
     services: [RoyalMailProviderService],
 })
+
+// Added to fix known issue with plugin loading: https://github.com/medusajs/medusa/issues/11205
+module.exports.default = {
+    ...module.exports.default,
+    services: [RoyalMailProviderService],
+}
