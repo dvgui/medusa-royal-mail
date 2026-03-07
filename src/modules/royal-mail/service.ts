@@ -72,17 +72,17 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
     }
 
     private async getSmartWeight(
-        variantId: string,
+        variantId: string | undefined,
         order: Partial<FulfillmentOrderDTO> | undefined,
         currentWeight?: number
     ): Promise<{ weight: number, length: number, width: number, height: number }> {
-        const orderItem = order?.items?.find(i => i.variant_id === variantId)
+        const orderItem = variantId ? order?.items?.find(i => i.variant_id === variantId) : null
         const v = (orderItem as any)?.variant
 
-        const weight = currentWeight || v?.weight || v?.product?.weight
-        const length = v?.length || v?.product?.length || 0
-        const width = v?.width || v?.product?.width || 0
-        const height = v?.height || v?.product?.height || 0
+        const weight = currentWeight || v?.weight || (orderItem as any)?.weight || v?.product?.weight
+        const length = v?.length || (orderItem as any)?.length || v?.product?.length || 0
+        const width = v?.width || (orderItem as any)?.width || v?.product?.width || 0
+        const height = v?.height || (orderItem as any)?.height || v?.product?.height || 0
 
         if (!weight || Number(weight) <= 0) {
             throw new Error(`Weight missing or invalid for variant ${variantId}. Royal Mail requires accurate weights for all items.`)
@@ -138,9 +138,11 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
             let totalH = 0
 
             const resolvedContents = await Promise.all(items.map(async item => {
-                const raw = item as any
-                const variantId = raw.variant_id || raw.line_item?.variant_id
-                const stats = await this.getSmartWeight(variantId, order, Number(raw.weight))
+                const lineItemId = (item as any).line_item_id
+                const orderItem = order?.items?.find(i => i.id === lineItemId) as any
+                const variantId = orderItem?.variant_id || (item as any).variant_id
+
+                const stats = await this.getSmartWeight(variantId, order, Number((item as any).weight || orderItem?.variant?.weight))
 
                 const qty = item.quantity || 1
                 totalWeight += (stats.weight * qty)
@@ -149,10 +151,10 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 totalH += (stats.height * qty)
 
                 return {
-                    name: item.title || "Item",
-                    SKU: item.sku || undefined,
+                    name: item.title || orderItem?.title || "Item",
+                    SKU: item.sku || orderItem?.variant?.sku || undefined,
                     quantity: qty,
-                    unitValue: Number((raw.unit_price as any) || 0),
+                    unitValue: Number((item as any).unit_price || orderItem?.unit_price || 0),
                     unitWeightInGrams: stats.weight
                 }
             }))
