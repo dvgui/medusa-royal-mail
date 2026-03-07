@@ -39,10 +39,8 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
 
     async getFulfillmentOptions(): Promise<FulfillmentOption[]> {
         return [
-            { id: "rm-1st-class", name: "Royal Mail 1st Class" },
-            { id: "rm-2nd-class", name: "Royal Mail 2nd Class" },
-            { id: "rm-tracked-24", name: "Royal Mail Tracked 24" },
-            { id: "rm-tracked-48", name: "Royal Mail Tracked 48" }
+            { id: "rm-signed-for-1st", name: "Royal Mail Signed For 1st Class" },
+            { id: "rm-international-tracked-signed", name: "International Tracked and Signed" }
         ]
     }
 
@@ -77,11 +75,54 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         variantId: string,
         order: Partial<FulfillmentOrderDTO> | undefined,
         currentWeight?: number
-    ): Promise<number> {
-        if (currentWeight && currentWeight > 0) return currentWeight
+    ): Promise<{ weight: number, length: number, width: number, height: number }> {
         const orderItem = order?.items?.find(i => i.variant_id === variantId)
-        const weight = (orderItem as any)?.variant?.weight || (orderItem as any)?.variant?.product?.weight
-        return weight && weight > 0 ? Number(weight) : 1
+        const v = (orderItem as any)?.variant
+
+        const weight = currentWeight || v?.weight || v?.product?.weight
+        const length = v?.length || v?.product?.length || 0
+        const width = v?.width || v?.product?.width || 0
+        const height = v?.height || v?.product?.height || 0
+
+        if (!weight || Number(weight) <= 0) {
+            throw new Error(`Weight missing or invalid for variant ${variantId}. Royal Mail requires accurate weights for all items.`)
+        }
+
+        return {
+            weight: Number(weight),
+            length: Number(length),
+            width: Number(width),
+            height: Number(height)
+        }
+    }
+
+    private getSmartPackageFormat(totalWeight: number, maxL: number, maxW: number, totalH: number): string {
+        // Letter: 24 x 16.5 x 0.5 cm, Max 100g
+        if (totalWeight <= 100 && maxL <= 24 && maxW <= 16.5 && totalH <= 0.5) {
+            return "letter"
+        }
+
+        // Large Letter: 35.3 x 25 x 2.5 cm, Max 750g (using 1000g for tracked as safe buffer)
+        if (totalWeight <= 1000 && maxL <= 35.3 && maxW <= 25 && totalH <= 2.5) {
+            return "largeLetter"
+        }
+
+        // Small Parcel: 45 x 35 x 16 cm, Max 2kg
+        if (totalWeight <= 2000 && maxL <= 45 && maxW <= 35 && totalH <= 16) {
+            return "smallParcel"
+        }
+
+        // Medium Parcel: 61 x 46 x 46 cm, Max 20kg
+        if (totalWeight <= 20000 && maxL <= 61 && maxW <= 46 && totalH <= 46) {
+            return "mediumParcel"
+        }
+
+        // Large Parcel: Up to 30kg
+        if (totalWeight <= 30000) {
+            return "largeParcel"
+        }
+
+        return "undefined"
     }
 
     async createFulfillment(
@@ -91,6 +132,34 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>
     ): Promise<CreateFulfillmentResult> {
         try {
+            let totalWeight = 0
+            let maxL = 0
+            let maxW = 0
+            let totalH = 0
+
+            const resolvedContents = await Promise.all(items.map(async item => {
+                const raw = item as any
+                const variantId = raw.variant_id || raw.line_item?.variant_id
+                const stats = await this.getSmartWeight(variantId, order, Number(raw.weight))
+
+                const qty = item.quantity || 1
+                totalWeight += (stats.weight * qty)
+                maxL = Math.max(maxL, stats.length)
+                maxW = Math.max(maxW, stats.width)
+                totalH += (stats.height * qty)
+
+                return {
+                    name: item.title || "Item",
+                    SKU: item.sku || undefined,
+                    quantity: qty,
+                    unitValue: Number((raw.unit_price as any) || 0),
+                    unitWeightInGrams: stats.weight
+                }
+            }))
+
+            const packageFormat = data?.package_format_identifier as string ||
+                this.getSmartPackageFormat(totalWeight, maxL, maxW, totalH)
+
             const rmOrder: RoyalMailOrder = {
                 orderReference: order?.display_id?.toString() || order?.id,
                 orderDate: new Date(order?.created_at || Date.now()).toISOString(),
@@ -111,26 +180,9 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 },
                 packages: [
                     {
-                        weightInGrams: Math.max(1, await items.reduce(async (accPromise, item) => {
-                            const acc = await accPromise
-                            const raw = item as any
-                            const variantId = raw.variant_id || raw.line_item?.variant_id
-                            const weight = await this.getSmartWeight(variantId, order, Number(raw.weight))
-                            return acc + (weight * (item.quantity || 1))
-                        }, Promise.resolve(0))),
-                        packageFormatIdentifier: (data?.package_format_identifier as string) || "parcel",
-                        contents: await Promise.all(items.map(async item => {
-                            const raw = item as any
-                            const variantId = raw.variant_id || raw.line_item?.variant_id
-                            const weight = await this.getSmartWeight(variantId, order, Number(raw.weight))
-                            return {
-                                name: item.title || "Item",
-                                SKU: item.sku || undefined,
-                                quantity: item.quantity || 1,
-                                unitValue: Number((raw.unit_price as any) || 0),
-                                unitWeightInGrams: weight
-                            }
-                        }))
+                        weightInGrams: totalWeight,
+                        packageFormatIdentifier: packageFormat,
+                        contents: resolvedContents
                     }
                 ]
             }
