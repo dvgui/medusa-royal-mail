@@ -132,34 +132,64 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         fulfillment: Partial<Omit<FulfillmentDTO, "provider_id" | "data" | "items">>
     ): Promise<CreateFulfillmentResult> {
         try {
+            const fulfillmentData =
+                (fulfillment as { data?: Record<string, unknown> }).data ?? {}
+
+            const existingRmOrderId = fulfillmentData.rmOrderId as
+                | string
+                | undefined
+
+            if (existingRmOrderId) {
+                this.logger_.info(
+                    `[Royal Mail] Skipping createOrders – existing rmOrderId=${existingRmOrderId} on fulfillment ${fulfillment.id}`
+                )
+
+                return {
+                    data: {
+                        ...fulfillmentData,
+                        rmOrderId: String(existingRmOrderId),
+                    },
+                    labels: [],
+                }
+            }
+
             let totalWeight = 0
             let maxL = 0
             let maxW = 0
             let totalH = 0
 
-            const resolvedContents = await Promise.all(items.map(async item => {
-                const lineItemId = (item as any).line_item_id
-                const orderItem = order?.items?.find(i => i.id === lineItemId) as any
-                const variantId = orderItem?.variant_id || (item as any).variant_id
+            const resolvedContents = await Promise.all(
+                items.map(async (item) => {
+                    const lineItemId = (item as any).line_item_id
+                    const orderItem = order?.items?.find((i) => i.id === lineItemId) as any
+                    const variantId = orderItem?.variant_id || (item as any).variant_id
 
-                const stats = await this.getSmartWeight(variantId, order, Number((item as any).weight || orderItem?.variant?.weight))
+                    const stats = await this.getSmartWeight(
+                        variantId,
+                        order,
+                        Number((item as any).weight || orderItem?.variant?.weight)
+                    )
 
-                const qty = item.quantity || 1
-                totalWeight += (stats.weight * qty)
-                maxL = Math.max(maxL, stats.length)
-                maxW = Math.max(maxW, stats.width)
-                totalH += (stats.height * qty)
+                    const qty = item.quantity || 1
+                    totalWeight += stats.weight * qty
+                    maxL = Math.max(maxL, stats.length)
+                    maxW = Math.max(maxW, stats.width)
+                    totalH += stats.height * qty
 
-                return {
-                    name: item.title || orderItem?.title || "Item",
-                    SKU: item.sku || orderItem?.variant?.sku || undefined,
-                    quantity: qty,
-                    unitValue: Number((item as any).unit_price || orderItem?.unit_price || 0),
-                    unitWeightInGrams: stats.weight
-                }
-            }))
+                    return {
+                        name: item.title || orderItem?.title || "Item",
+                        SKU: item.sku || orderItem?.variant?.sku || undefined,
+                        quantity: qty,
+                        unitValue: Number(
+                            (item as any).unit_price || orderItem?.unit_price || 0
+                        ),
+                        unitWeightInGrams: stats.weight,
+                    }
+                })
+            )
 
-            const packageFormat = data?.package_format_identifier as string ||
+            const packageFormat =
+                (data?.package_format_identifier as string) ||
                 this.getSmartPackageFormat(totalWeight, maxL, maxW, totalH)
 
             const rmOrder: RoyalMailOrder = {
@@ -170,12 +200,14 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 total: Number(order?.total || 0),
                 recipient: {
                     address: {
-                        fullName: `${order?.shipping_address?.first_name || ''} ${order?.shipping_address?.last_name || ''}`.trim(),
+                        fullName: `${order?.shipping_address?.first_name || ""} ${order?.shipping_address?.last_name || ""
+                            }`.trim(),
                         addressLine1: order?.shipping_address?.address_1 || "",
                         addressLine2: order?.shipping_address?.address_2 || undefined,
                         city: order?.shipping_address?.city || "",
                         postcode: order?.shipping_address?.postal_code || "",
-                        countryCode: order?.shipping_address?.country_code?.toUpperCase() || "",
+                        countryCode:
+                            order?.shipping_address?.country_code?.toUpperCase() || "",
                     },
                     emailAddress: order?.email || undefined,
                     phoneNumber: order?.shipping_address?.phone || undefined,
@@ -184,9 +216,9 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                     {
                         weightInGrams: totalWeight,
                         packageFormatIdentifier: packageFormat,
-                        contents: resolvedContents
-                    }
-                ]
+                        contents: resolvedContents,
+                    },
+                ],
             }
 
             console.log("====== MEDUSA TO ROYAL MAIL PAYLOAD ======")
@@ -214,16 +246,19 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
 
             return {
                 data: {
+                    ...fulfillmentData,
                     rmOrderId: String(orderIdentifier),
                 },
-                labels: []
+                labels: [],
             }
         } catch (e: any) {
             console.error("====== CRITICAL ROYAL MAIL API ERROR ======")
             console.error(e.message)
             console.error(JSON.stringify(e, null, 2))
             console.error("=========================================")
-            this.logger_.error(`[Royal Mail] Failed to create fulfillment: ${e.message}`)
+            this.logger_.error(
+                `[Royal Mail] Failed to create fulfillment: ${e.message}`
+            )
             throw e
         }
     }
