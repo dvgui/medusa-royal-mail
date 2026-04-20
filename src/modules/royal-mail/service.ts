@@ -13,6 +13,7 @@ import {
     CalculatedShippingOptionPrice,
     CreateShippingOptionDTO,
     RemoteQueryFunction,
+    ValidateFulfillmentDataContext,
 } from "@medusajs/framework/types"
 import { RoyalMailClient } from "../../lib/royal-mail-client/client"
 import { RoyalMailOrder } from "../../lib/royal-mail-client/types"
@@ -135,23 +136,25 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
     async validateFulfillmentData(
         optionData: Record<string, unknown>,
         data: Record<string, unknown>,
-        context: Record<string, unknown>
-    ): Promise<any> {
+        _context: ValidateFulfillmentDataContext
+    ): Promise<Record<string, unknown>> {
         return { ...optionData, ...data }
     }
 
-    async validateOption(data: Record<string, unknown>) {
+    async validateOption(
+        _data: Record<string, unknown>
+    ): Promise<boolean> {
         return true
     }
 
-    async canCalculate(data: CreateShippingOptionDTO): Promise<boolean> {
+    async canCalculate(_data: CreateShippingOptionDTO): Promise<boolean> {
         return false
     }
 
     async calculatePrice(
-        optionData: CalculateShippingOptionPriceDTO["optionData"],
-        data: CalculateShippingOptionPriceDTO["data"],
-        context: CalculateShippingOptionPriceDTO["context"]
+        _optionData: CalculateShippingOptionPriceDTO["optionData"],
+        _data: CalculateShippingOptionPriceDTO["data"],
+        _context: CalculateShippingOptionPriceDTO["context"]
     ): Promise<CalculatedShippingOptionPrice> {
         return {
             calculated_amount: 500,
