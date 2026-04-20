@@ -1,4 +1,7 @@
-import { AbstractFulfillmentProviderService } from "@medusajs/framework/utils"
+import {
+    AbstractFulfillmentProviderService,
+    ContainerRegistrationKeys,
+} from "@medusajs/framework/utils"
 import {
     Logger,
     CreateFulfillmentResult,
@@ -9,32 +12,108 @@ import {
     CalculateShippingOptionPriceDTO,
     CalculatedShippingOptionPrice,
     CreateShippingOptionDTO,
+    RemoteQueryFunction,
 } from "@medusajs/framework/types"
 import { RoyalMailClient } from "../../lib/royal-mail-client/client"
 import { RoyalMailOrder } from "../../lib/royal-mail-client/types"
 
 type InjectedDependencies = {
     logger: Logger
+    [ContainerRegistrationKeys.QUERY]?: RemoteQueryFunction
 }
 
 type Options = {
     apiKey: string
 }
 
+type Dimensions = {
+    weight: number
+    length: number
+    width: number
+    height: number
+}
+
+type HydratedVariant = {
+    id?: string | null
+    weight?: number | null
+    length?: number | null
+    width?: number | null
+    height?: number | null
+    sku?: string | null
+    product_id?: string | null
+    product?: {
+        id?: string | null
+        weight?: number | null
+        length?: number | null
+        width?: number | null
+        height?: number | null
+    } | null
+}
+
+type HydratedItem = {
+    id?: string
+    line_item_id?: string | null
+    title?: string | null
+    quantity?: number | null
+    sku?: string | null
+    unit_price?: number | string | null
+    variant_id?: string | null
+    product_id?: string | null
+    weight?: number | null
+    length?: number | null
+    width?: number | null
+    height?: number | null
+    variant?: HydratedVariant | null
+}
+
+const toPositive = (v: unknown): number | undefined => {
+    const n = typeof v === "string" ? parseFloat(v) : (v as number)
+    return Number.isFinite(n) && n > 0 ? n : undefined
+}
+
 export class RoyalMailProviderService extends AbstractFulfillmentProviderService {
     static identifier = "royal-mail-fulfillment"
     private client: RoyalMailClient
     private logger_: Logger
+    private query_?: RemoteQueryFunction
 
-    constructor({ logger }: InjectedDependencies, options: Options) {
+    constructor(deps: InjectedDependencies, options: Options) {
         super()
-        this.logger_ = logger
+        this.logger_ = deps.logger
+        this.query_ = deps[ContainerRegistrationKeys.QUERY]
 
         if (!options.apiKey) {
             this.logger_.warn("[Royal Mail] apiKey is missing in fulfillment module options.")
         }
 
         this.client = new RoyalMailClient({ apiKey: options.apiKey }, this.logger_)
+    }
+
+    private async fetchProductDimensions(
+        productId: string
+    ): Promise<Partial<Dimensions>> {
+        if (!this.query_) return {}
+        try {
+            const { data } = await this.query_.graph({
+                entity: "product",
+                fields: ["id", "weight", "length", "width", "height"],
+                filters: { id: productId },
+            })
+            const p = data?.[0]
+            if (!p) return {}
+            return {
+                weight: toPositive(p.weight),
+                length: toPositive(p.length),
+                width: toPositive(p.width),
+                height: toPositive(p.height),
+            }
+        } catch (e) {
+            const message = e instanceof Error ? e.message : String(e)
+            this.logger_.warn(
+                `[Royal Mail] Failed to fetch product ${productId} dimensions: ${message}`
+            )
+            return {}
+        }
     }
 
     async getFulfillmentOptions(): Promise<FulfillmentOption[]> {
@@ -75,24 +154,54 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         variantId: string | undefined,
         order: Partial<FulfillmentOrderDTO> | undefined,
         currentWeight?: number
-    ): Promise<{ weight: number, length: number, width: number, height: number }> {
-        const orderItem = variantId ? order?.items?.find(i => i.variant_id === variantId) : null
-        const v = (orderItem as any)?.variant
+    ): Promise<Dimensions> {
+        const items = (order?.items ?? []) as HydratedItem[]
+        const orderItem = variantId
+            ? items.find((i) => i.variant_id === variantId)
+            : undefined
+        const variant = orderItem?.variant ?? undefined
+        const product = variant?.product ?? undefined
 
-        const weight = currentWeight || v?.weight || (orderItem as any)?.weight || v?.product?.weight
-        const length = v?.length || (orderItem as any)?.length || v?.product?.length || 0
-        const width = v?.width || (orderItem as any)?.width || v?.product?.width || 0
-        const height = v?.height || (orderItem as any)?.height || v?.product?.height || 0
+        let weight =
+            toPositive(currentWeight) ??
+            toPositive(variant?.weight) ??
+            toPositive(orderItem?.weight) ??
+            toPositive(product?.weight)
 
-        if (!weight || Number(weight) <= 0) {
-            throw new Error(`Weight missing or invalid for variant ${variantId}. Royal Mail requires accurate weights for all items.`)
+        let length =
+            toPositive(variant?.length) ??
+            toPositive(orderItem?.length) ??
+            toPositive(product?.length)
+        let width =
+            toPositive(variant?.width) ??
+            toPositive(orderItem?.width) ??
+            toPositive(product?.width)
+        let height =
+            toPositive(variant?.height) ??
+            toPositive(orderItem?.height) ??
+            toPositive(product?.height)
+
+        const productId = product?.id ?? variant?.product_id ?? orderItem?.product_id
+        const needsFetch = !weight || !length || !width || !height
+        if (needsFetch && productId) {
+            const fetched = await this.fetchProductDimensions(productId)
+            weight = weight ?? fetched.weight
+            length = length ?? fetched.length
+            width = width ?? fetched.width
+            height = height ?? fetched.height
+        }
+
+        if (!weight) {
+            throw new Error(
+                `Weight missing or invalid for variant ${variantId}. Royal Mail requires accurate weights for all items.`
+            )
         }
 
         return {
-            weight: Number(weight),
-            length: Number(length),
-            width: Number(width),
-            height: Number(height)
+            weight,
+            length: length ?? 0,
+            width: width ?? 0,
+            height: height ?? 0,
         }
     }
 
@@ -158,30 +267,33 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
             let maxW = 0
             let totalH = 0
 
+            const orderItems = (order?.items ?? []) as HydratedItem[]
+
             const resolvedContents = await Promise.all(
-                items.map(async (item) => {
-                    const lineItemId = (item as any).line_item_id
-                    const orderItem = order?.items?.find((i) => i.id === lineItemId) as any
-                    const variantId = orderItem?.variant_id || (item as any).variant_id
+                items.map(async (rawItem) => {
+                    const item = rawItem as HydratedItem & { quantity?: number; title?: string | null; sku?: string | null }
+                    const lineItemId = item.line_item_id
+                    const orderItem = orderItems.find((i) => i.id === lineItemId)
+                    const variantId = orderItem?.variant_id ?? item.variant_id ?? undefined
 
                     const stats = await this.getSmartWeight(
-                        variantId,
+                        variantId ?? undefined,
                         order,
-                        Number((item as any).weight || orderItem?.variant?.weight)
+                        toPositive(item.weight) ?? toPositive(orderItem?.variant?.weight)
                     )
 
-                    const qty = item.quantity || 1
+                    const qty = item.quantity ?? 1
                     totalWeight += stats.weight * qty
                     maxL = Math.max(maxL, stats.length)
                     maxW = Math.max(maxW, stats.width)
                     totalH += stats.height * qty
 
                     return {
-                        name: item.title || orderItem?.title || "Item",
-                        SKU: item.sku || orderItem?.variant?.sku || undefined,
+                        name: item.title ?? orderItem?.title ?? "Item",
+                        SKU: item.sku ?? orderItem?.variant?.sku ?? undefined,
                         quantity: qty,
                         unitValue: Number(
-                            (item as any).unit_price || orderItem?.unit_price || 0
+                            item.unit_price ?? orderItem?.unit_price ?? 0
                         ),
                         unitWeightInGrams: stats.weight,
                     }
