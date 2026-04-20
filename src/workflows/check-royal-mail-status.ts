@@ -6,6 +6,7 @@ import {
 } from "@medusajs/framework/workflows-sdk"
 import { createShipmentWorkflow } from "@medusajs/medusa/core-flows"
 import { checkRoyalMailOrderStatusStep } from "./steps/check-royal-mail-order-status"
+import { RoyalMailClient } from "../lib/royal-mail-client/client"
 
 interface CreateShipmentWorkflowInput {
     id: string
@@ -44,9 +45,7 @@ export const checkRoyalMailStatusWorkflow = createWorkflow(
                     labels: [
                         {
                             tracking_number: trackingNumber,
-                            tracking_url: trackingNumber
-                                ? `https://www.royalmail.com/track-your-item#/tracking-results/${trackingNumber}`
-                                : "",
+                            tracking_url: RoyalMailClient.trackingUrlFor(trackingNumber),
                             label_url: "",
                         },
                     ],

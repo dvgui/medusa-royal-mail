@@ -49,9 +49,6 @@ export const processRoyalMailFulfillmentsStep = createStep(
                 }
 
                 const trackingNumber = order.trackingNumber ?? ""
-                const trackingUrl = trackingNumber
-                    ? `https://www.royalmail.com/track-your-item#/tracking-results/${trackingNumber}`
-                    : ""
 
                 await createShipmentWorkflow(container).run({
                     input: {
@@ -59,7 +56,7 @@ export const processRoyalMailFulfillmentsStep = createStep(
                         labels: [
                             {
                                 tracking_number: trackingNumber,
-                                tracking_url: trackingUrl,
+                                tracking_url: RoyalMailClient.trackingUrlFor(trackingNumber),
                                 label_url: "",
                             },
                         ],

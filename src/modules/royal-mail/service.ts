@@ -67,7 +67,7 @@ type HydratedItem = {
 }
 
 const toPositive = (v: unknown): number | undefined => {
-    const n = typeof v === "string" ? parseFloat(v) : (v as number)
+    const n = Number(v)
     return Number.isFinite(n) && n > 0 ? n : undefined
 }
 

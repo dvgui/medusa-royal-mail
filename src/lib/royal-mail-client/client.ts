@@ -79,6 +79,16 @@ export class RoyalMailClient {
             `/orders/${orderIdentifier}`,
             "GET"
         )
-        return Array.isArray(response) && response.length > 0 ? response[0] : null
+        return response?.[0] ?? null
+    }
+
+    /**
+     * Builds a public tracking URL for a given tracking number. Returns "" if
+     * no tracking number is provided.
+     */
+    static trackingUrlFor(trackingNumber: string | null | undefined): string {
+        return trackingNumber
+            ? `https://www.royalmail.com/track-your-item#/tracking-results/${trackingNumber}`
+            : ""
     }
 }
