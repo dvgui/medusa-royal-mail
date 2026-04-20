@@ -1,5 +1,12 @@
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk"
-import { MedusaContainer } from "@medusajs/framework/types"
+import {
+    IEventBusModuleService,
+    MedusaContainer,
+} from "@medusajs/framework/types"
+import {
+    FulfillmentWorkflowEvents,
+    Modules,
+} from "@medusajs/framework/utils"
 import { RoyalMailClient } from "../../lib/royal-mail-client/client"
 import { PendingRoyalMailFulfillment } from "./find-pending-royal-mail-fulfillments"
 import { createShipmentWorkflow } from "@medusajs/medusa/core-flows"
@@ -27,6 +34,10 @@ export const processRoyalMailFulfillmentsStep = createStep(
         }
 
         const client = new RoyalMailClient({ apiKey }, logger)
+
+        const eventBus = container.resolve<IEventBusModuleService>(
+            Modules.EVENT_BUS
+        )
 
         let shipped = 0
 
@@ -60,6 +71,19 @@ export const processRoyalMailFulfillmentsStep = createStep(
                                 label_url: "",
                             },
                         ],
+                    },
+                })
+
+                // createShipmentWorkflow only updates shipped_at; it does NOT
+                // emit shipment.created (that event is only emitted by the
+                // order-level createOrderShipmentWorkflow the admin UI calls).
+                // Emit it manually so downstream subscribers (e.g. the order-
+                // shipped email) fire for polled shipments too.
+                await eventBus.emit({
+                    name: FulfillmentWorkflowEvents.SHIPMENT_CREATED,
+                    data: {
+                        id: fulfillment.fulfillmentId,
+                        no_notification: false,
                     },
                 })
 
