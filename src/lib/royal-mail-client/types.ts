@@ -70,10 +70,19 @@ export type RoyalMailOrderResponse = {
     }>
 }
 
-export type RoyalMailOrderDetails = RoyalMailOrder & {
-    orderIdentifier: string
-    status: string
+/**
+ * Click & Drop GET /orders/{id} returns an array with a single entry. The
+ * entry has no `status` field — despatch is signaled by the presence of
+ * `shippedOn`.
+ */
+export type RoyalMailOrderDetails = {
+    orderIdentifier: number
+    orderReference?: string
+    createdOn?: string
+    orderDate?: string
+    printedOn?: string
+    shippedOn?: string
     trackingNumber?: string
-    trackingUrl?: string
+    packages?: Array<{ packageNumber: number }>
 }
 // See Royal Mail API Docs: https://api.parcel.royalmail.com

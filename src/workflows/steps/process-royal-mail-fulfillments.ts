@@ -34,21 +34,32 @@ export const processRoyalMailFulfillmentsStep = createStep(
             try {
                 const order = await client.getOrder(fulfillment.rmOrderIdentifier)
 
-                if (order.status !== "Despatched") {
+                if (!order) {
                     logger.info(
-                        `[RoyalMail] Fulfillment ${fulfillment.fulfillmentId} status: ${order.status} — skipping`
+                        `[RoyalMail] Fulfillment ${fulfillment.fulfillmentId} — RM order ${fulfillment.rmOrderIdentifier} not found, skipping`
                     )
                     continue
                 }
 
-                // Call createShipmentWorkflow for this fulfillment
+                if (!order.shippedOn) {
+                    logger.info(
+                        `[RoyalMail] Fulfillment ${fulfillment.fulfillmentId} not yet despatched — skipping`
+                    )
+                    continue
+                }
+
+                const trackingNumber = order.trackingNumber ?? ""
+                const trackingUrl = trackingNumber
+                    ? `https://www.royalmail.com/track-your-item#/tracking-results/${trackingNumber}`
+                    : ""
+
                 await createShipmentWorkflow(container).run({
                     input: {
                         id: fulfillment.fulfillmentId,
                         labels: [
                             {
-                                tracking_number: order.trackingNumber ?? "",
-                                tracking_url: order.trackingUrl ?? "",
+                                tracking_number: trackingNumber,
+                                tracking_url: trackingUrl,
                                 label_url: "",
                             },
                         ],
@@ -57,7 +68,7 @@ export const processRoyalMailFulfillmentsStep = createStep(
 
                 shipped++
                 logger.info(
-                    `[RoyalMail] Fulfillment ${fulfillment.fulfillmentId} marked as shipped. Tracking: ${order.trackingNumber}`
+                    `[RoyalMail] Fulfillment ${fulfillment.fulfillmentId} marked as shipped. Tracking: ${trackingNumber}`
                 )
             } catch (error: any) {
                 // Non-fatal per fulfillment — log and continue to the next one

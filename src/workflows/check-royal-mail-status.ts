@@ -35,15 +35,18 @@ export const checkRoyalMailStatusWorkflow = createWorkflow(
         })
 
         const result = when({ rmOrder }, (data) => {
-            return !!data.rmOrder && data.rmOrder.status === "Despatched"
+            return !!data.rmOrder && !!data.rmOrder.shippedOn
         }).then(() => {
             const shipmentData = transform({ input, rmOrder }, (data) => {
+                const trackingNumber = data.rmOrder?.trackingNumber ?? ""
                 const payload: CreateShipmentWorkflowInput = {
                     id: data.input.fulfillmentId,
                     labels: [
                         {
-                            tracking_number: data.rmOrder?.trackingNumber ?? "",
-                            tracking_url: data.rmOrder?.trackingUrl ?? "",
+                            tracking_number: trackingNumber,
+                            tracking_url: trackingNumber
+                                ? `https://www.royalmail.com/track-your-item#/tracking-results/${trackingNumber}`
+                                : "",
                             label_url: "",
                         },
                     ],

@@ -68,9 +68,17 @@ export class RoyalMailClient {
     }
 
     /**
-     * Gets order details from Click & Drop
+     * Gets order details from Click & Drop. The API returns an array with a
+     * single entry; callers get that entry directly, or null if the order
+     * isn't found.
      */
-    async getOrder(orderIdentifier: string): Promise<RoyalMailOrderDetails> {
-        return this.request<RoyalMailOrderDetails>(`/orders/${orderIdentifier}`, "GET")
+    async getOrder(
+        orderIdentifier: string
+    ): Promise<RoyalMailOrderDetails | null> {
+        const response = await this.request<RoyalMailOrderDetails[]>(
+            `/orders/${orderIdentifier}`,
+            "GET"
+        )
+        return Array.isArray(response) && response.length > 0 ? response[0] : null
     }
 }
