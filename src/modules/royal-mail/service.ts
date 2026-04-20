@@ -80,7 +80,16 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
     constructor(deps: InjectedDependencies, options: Options) {
         super()
         this.logger_ = deps.logger
-        this.query_ = deps[ContainerRegistrationKeys.QUERY]
+
+        // Fulfillment provider containers don't always register `query`. Awilix
+        // throws on missing keys, so probe defensively and fall back to undefined.
+        try {
+            this.query_ = (deps as Record<string, unknown>)[
+                ContainerRegistrationKeys.QUERY
+            ] as RemoteQueryFunction | undefined
+        } catch {
+            this.query_ = undefined
+        }
 
         if (!options.apiKey) {
             this.logger_.warn("[Royal Mail] apiKey is missing in fulfillment module options.")
