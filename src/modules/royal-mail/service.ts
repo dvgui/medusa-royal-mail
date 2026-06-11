@@ -312,6 +312,39 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 })
             )
 
+            // Click & Drop rejects packages where the same SKU appears in more
+            // than one contents row (error 77), which happens when an order has
+            // multiple line items for the same variant (e.g. promo-priced
+            // duplicates). Merge them, averaging unitValue to preserve the total.
+            const mergedContents = [...resolvedContents
+                .reduce((acc, content) => {
+                    const key = content.SKU
+                    if (!key) {
+                        acc.set(Symbol(), content)
+                        return acc
+                    }
+                    const existing = acc.get(key)
+                    if (!existing) {
+                        acc.set(key, { ...content })
+                        return acc
+                    }
+                    const totalQty = existing.quantity + content.quantity
+                    existing.unitValue =
+                        Math.round(
+                            ((existing.unitValue * existing.quantity +
+                                content.unitValue * content.quantity) /
+                                totalQty) *
+                                100
+                        ) / 100
+                    existing.unitWeightInGrams = Math.max(
+                        existing.unitWeightInGrams,
+                        content.unitWeightInGrams
+                    )
+                    existing.quantity = totalQty
+                    return acc
+                }, new Map<string | symbol, (typeof resolvedContents)[number]>())
+                .values()]
+
             const packageFormat =
                 (data?.package_format_identifier as string) ||
                 this.getSmartPackageFormat(totalWeight, maxL, maxW, totalH)
@@ -340,7 +373,7 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                     {
                         weightInGrams: totalWeight,
                         packageFormatIdentifier: packageFormat,
-                        contents: resolvedContents,
+                        contents: mergedContents,
                     },
                 ],
             }
