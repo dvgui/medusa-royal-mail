@@ -92,9 +92,42 @@ export const processRoyalMailFulfillmentsStep = createStep(
                     `[RoyalMail] Fulfillment ${fulfillment.fulfillmentId} marked as shipped. Tracking: ${trackingNumber}`
                 )
             } catch (error: any) {
+                const msg = String(error?.message ?? error)
+
+                // RM 400 "Order with provided id does not exist" is permanent —
+                // the Click & Drop order was deleted (merged labels, manual
+                // cleanup). Flag the fulfillment so the finder stops polling it.
+                if (/Order with provided id does not exist/i.test(msg)) {
+                    try {
+                        const fulfillmentModule = container.resolve(
+                            Modules.FULFILLMENT
+                        )
+                        const existing = await fulfillmentModule.retrieveFulfillment(
+                            fulfillment.fulfillmentId
+                        )
+                        await fulfillmentModule.updateFulfillment(
+                            fulfillment.fulfillmentId,
+                            {
+                                data: {
+                                    ...((existing.data as Record<string, unknown>) ?? {}),
+                                    rmPollTerminalError: new Date().toISOString(),
+                                },
+                            }
+                        )
+                        logger.warn(
+                            `[RoyalMail] Fulfillment ${fulfillment.fulfillmentId} — RM order ${fulfillment.rmOrderIdentifier} no longer exists at Click & Drop; flagged terminal, polling stops`
+                        )
+                    } catch (flagError: any) {
+                        logger.error(
+                            `[RoyalMail] Failed to flag terminal fulfillment ${fulfillment.fulfillmentId}: ${flagError.message}`
+                        )
+                    }
+                    continue
+                }
+
                 // Non-fatal per fulfillment — log and continue to the next one
                 logger.error(
-                    `[RoyalMail] Error processing fulfillment ${fulfillment.fulfillmentId}: ${error.message}`
+                    `[RoyalMail] Error processing fulfillment ${fulfillment.fulfillmentId}: ${msg}`
                 )
             }
         }

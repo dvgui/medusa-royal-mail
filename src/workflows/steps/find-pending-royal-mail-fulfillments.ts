@@ -25,9 +25,13 @@ export const findPendingRoyalMailFulfillmentsStep = createStep(
 
         const { data: fulfillments } = await query.graph({
             entity: "fulfillment",
-            fields: ["id", "shipped_at", "data"],
+            fields: ["id", "shipped_at", "canceled_at", "data"],
             filters: {
                 shipped_at: null,
+                // Cancelled fulfillments keep their rmOrderId; without this
+                // filter every failed/cancelled label attempt joins the poll
+                // set forever.
+                canceled_at: null,
             },
         })
 
@@ -36,7 +40,11 @@ export const findPendingRoyalMailFulfillmentsStep = createStep(
                 (f) =>
                     f.data &&
                     typeof f.data === "object" &&
-                    (f.data as Record<string, unknown>).rmOrderId != null
+                    (f.data as Record<string, unknown>).rmOrderId != null &&
+                    // Flagged by the processor when RM says the order no
+                    // longer exists — permanent, retrying only burns rate
+                    // limit (429s that then break polling for live shipments).
+                    (f.data as Record<string, unknown>).rmPollTerminalError == null
             )
             .map((f) => ({
                 fulfillmentId: f.id,
