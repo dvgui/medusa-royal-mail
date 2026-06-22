@@ -1,6 +1,7 @@
 import {
     AbstractFulfillmentProviderService,
     ContainerRegistrationKeys,
+    MedusaError,
 } from "@medusajs/framework/utils"
 import {
     Logger,
@@ -474,7 +475,15 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
             this.logger_.error(
                 `[Royal Mail] Failed to create fulfillment: ${e.message}`
             )
-            throw e
+            // Surface the real reason to the admin. Medusa's default error
+            // handler hides plain Error messages as "An unknown error occurred";
+            // a MedusaError passes the message through (here as a 400) so the
+            // admin sees the actual cause (weight/validation/API/config).
+            if (e instanceof MedusaError) throw e
+            throw new MedusaError(
+                MedusaError.Types.INVALID_DATA,
+                e instanceof Error ? e.message : String(e)
+            )
         }
     }
 
