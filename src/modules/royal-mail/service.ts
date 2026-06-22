@@ -126,6 +126,50 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         }
     }
 
+    /**
+     * Resolve dimensions straight from the variant id — the reliable source of
+     * truth. Medusa doesn't always hydrate `order.items[].variant` (and thus
+     * product_id) in the fulfillment payload, so the product-level fetch can be
+     * unreachable; the variant id is always passed to getSmartWeight. Falls back
+     * to the variant's product-level dims when the variant itself has none.
+     */
+    private async fetchVariantDimensions(
+        variantId: string
+    ): Promise<Partial<Dimensions>> {
+        if (!this.query_) return {}
+        try {
+            const { data } = await this.query_.graph({
+                entity: "product_variant",
+                fields: [
+                    "id",
+                    "weight",
+                    "length",
+                    "width",
+                    "height",
+                    "product.weight",
+                    "product.length",
+                    "product.width",
+                    "product.height",
+                ],
+                filters: { id: variantId },
+            })
+            const v = data?.[0] as HydratedVariant | undefined
+            if (!v) return {}
+            return {
+                weight: toPositive(v.weight) ?? toPositive(v.product?.weight),
+                length: toPositive(v.length) ?? toPositive(v.product?.length),
+                width: toPositive(v.width) ?? toPositive(v.product?.width),
+                height: toPositive(v.height) ?? toPositive(v.product?.height),
+            }
+        } catch (e) {
+            const message = e instanceof Error ? e.message : String(e)
+            this.logger_.warn(
+                `[Royal Mail] Failed to fetch variant ${variantId} dimensions: ${message}`
+            )
+            return {}
+        }
+    }
+
     async getFulfillmentOptions(): Promise<FulfillmentOption[]> {
         return [
             { id: "rm-signed-for-1st", name: "Royal Mail Signed For 1st Class" },
@@ -193,8 +237,22 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
             toPositive(orderItem?.height) ??
             toPositive(product?.height)
 
+        // Primary fallback: look the dims up by variant id. The order payload is
+        // often NOT hydrated with variant/product (so the hydrated reads above
+        // and the product-level fetch below are unreachable), but the variant id
+        // is always available — and that's where per-dosage weights live.
+        let needsFetch = !weight || !length || !width || !height
+        if (needsFetch && variantId) {
+            const fetched = await this.fetchVariantDimensions(variantId)
+            weight = weight ?? fetched.weight
+            length = length ?? fetched.length
+            width = width ?? fetched.width
+            height = height ?? fetched.height
+        }
+
+        // Secondary fallback: product-level dims (covers items with no variant).
         const productId = product?.id ?? variant?.product_id ?? orderItem?.product_id
-        const needsFetch = !weight || !length || !width || !height
+        needsFetch = !weight || !length || !width || !height
         if (needsFetch && productId) {
             const fetched = await this.fetchProductDimensions(productId)
             weight = weight ?? fetched.weight
