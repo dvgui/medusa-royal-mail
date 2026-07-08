@@ -5,6 +5,12 @@ import { MedusaContainer } from "@medusajs/framework/types"
 export interface PendingRoyalMailFulfillment {
     fulfillmentId: string
     rmOrderIdentifier: string
+    /**
+     * ISO timestamp stamped by the processor once the "order prepared" email
+     * has been sent (label ready, pre-despatch). `null` until then, so the
+     * poll fires that email exactly once.
+     */
+    preparedNotifiedAt: string | null
 }
 
 /**
@@ -46,10 +52,15 @@ export const findPendingRoyalMailFulfillmentsStep = createStep(
                     // limit (429s that then break polling for live shipments).
                     (f.data as Record<string, unknown>).rmPollTerminalError == null
             )
-            .map((f) => ({
-                fulfillmentId: f.id,
-                rmOrderIdentifier: String((f.data as Record<string, unknown>).rmOrderId),
-            }))
+            .map((f) => {
+                const data = f.data as Record<string, unknown>
+                return {
+                    fulfillmentId: f.id,
+                    rmOrderIdentifier: String(data.rmOrderId),
+                    preparedNotifiedAt:
+                        (data.rmPreparedNotifiedAt as string | undefined) ?? null,
+                }
+            })
 
         console.log(
             `[RoyalMail] Found ${pending.length} fulfillment(s) pending despatch confirmation`
