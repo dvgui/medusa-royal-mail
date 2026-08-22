@@ -66,6 +66,7 @@ type HydratedItem = {
     width?: number | null
     height?: number | null
     variant?: HydratedVariant | null
+    metadata?: Record<string, unknown> | null
 }
 
 const toPositive = (v: unknown): number | undefined => {
@@ -314,6 +315,12 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
         try {
             const fulfillmentData =
                 (fulfillment as { data?: Record<string, unknown> }).data ?? {}
+            const fulfillmentMetadata =
+                (fulfillment as { metadata?: Record<string, unknown> }).metadata ?? {}
+            const resendClaimId =
+                typeof fulfillmentMetadata.resend_claim_id === "string"
+                    ? fulfillmentMetadata.resend_claim_id
+                    : undefined
 
             const existingRmOrderId = fulfillmentData.rmOrderId as
                 | string
@@ -345,6 +352,15 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                     const item = rawItem as HydratedItem & { quantity?: number; title?: string | null; sku?: string | null }
                     const lineItemId = item.line_item_id
                     const orderItem = orderItems.find((i) => i.id === lineItemId)
+                    const originalLineItemId =
+                        typeof orderItem?.metadata?.resend_original_line_item_id ===
+                        "string"
+                            ? orderItem.metadata.resend_original_line_item_id
+                            : undefined
+                    const valueSource = originalLineItemId
+                        ? orderItems.find((i) => i.id === originalLineItemId) ??
+                          orderItem
+                        : orderItem
                     const variantId = orderItem?.variant_id ?? item.variant_id ?? undefined
 
                     const stats = await this.getSmartWeight(
@@ -364,7 +380,9 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                         SKU: item.sku ?? orderItem?.variant?.sku ?? undefined,
                         quantity: qty,
                         unitValue: Number(
-                            item.unit_price ?? orderItem?.unit_price ?? 0
+                            resendClaimId
+                                ? valueSource?.unit_price ?? 0
+                                : item.unit_price ?? orderItem?.unit_price ?? 0
                         ),
                         unitWeightInGrams: stats.weight,
                     }
@@ -407,13 +425,25 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
             const packageFormat =
                 (data?.package_format_identifier as string) ||
                 this.getSmartPackageFormat(totalWeight, maxL, maxW, totalH)
+            const declaredSubtotal = mergedContents.reduce(
+                (sum, item) => sum + item.unitValue * item.quantity,
+                0
+            )
 
             const rmOrder: RoyalMailOrder = {
-                orderReference: order?.display_id?.toString() || order?.id,
+                orderReference: resendClaimId
+                    ? `${order?.display_id?.toString() || order?.id}-R-${resendClaimId.slice(-8)}`
+                    : order?.display_id?.toString() || order?.id,
                 orderDate: new Date(order?.created_at || Date.now()).toISOString(),
-                subtotal: Number(order?.item_total || 0),
-                shippingCostCharged: Number(order?.shipping_total || 0),
-                total: Number(order?.total || 0),
+                subtotal: resendClaimId
+                    ? declaredSubtotal
+                    : Number(order?.item_total || 0),
+                shippingCostCharged: resendClaimId
+                    ? 0
+                    : Number(order?.shipping_total || 0),
+                total: resendClaimId
+                    ? declaredSubtotal
+                    : Number(order?.total || 0),
                 recipient: {
                     address: {
                         fullName: `${order?.shipping_address?.first_name || ""} ${order?.shipping_address?.last_name || ""
