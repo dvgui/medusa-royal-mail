@@ -17,7 +17,7 @@ import {
     ValidateFulfillmentDataContext,
 } from "@medusajs/framework/types"
 import { RoyalMailClient } from "../../lib/royal-mail-client/client"
-import { RoyalMailOrder } from "../../lib/royal-mail-client/types"
+import { RoyalMailOrder, RoyalMailRecipient } from "../../lib/royal-mail-client/types"
 
 type InjectedDependencies = {
     logger: Logger
@@ -430,6 +430,21 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 0
             )
 
+            const recipient: RoyalMailRecipient = {
+                address: {
+                    fullName: `${order?.shipping_address?.first_name || ""} ${order?.shipping_address?.last_name || ""
+                        }`.trim(),
+                    addressLine1: order?.shipping_address?.address_1 || "",
+                    addressLine2: order?.shipping_address?.address_2 || undefined,
+                    city: order?.shipping_address?.city || "",
+                    postcode: order?.shipping_address?.postal_code || "",
+                    countryCode:
+                        order?.shipping_address?.country_code?.toUpperCase() || "",
+                },
+                emailAddress: order?.email || undefined,
+                phoneNumber: order?.shipping_address?.phone || undefined,
+            }
+
             const rmOrder: RoyalMailOrder = {
                 orderReference: resendClaimId
                     ? `${order?.display_id?.toString() || order?.id}-R-${resendClaimId.slice(-8)}`
@@ -444,20 +459,12 @@ export class RoyalMailProviderService extends AbstractFulfillmentProviderService
                 total: resendClaimId
                     ? declaredSubtotal
                     : Number(order?.total || 0),
-                recipient: {
-                    address: {
-                        fullName: `${order?.shipping_address?.first_name || ""} ${order?.shipping_address?.last_name || ""
-                            }`.trim(),
-                        addressLine1: order?.shipping_address?.address_1 || "",
-                        addressLine2: order?.shipping_address?.address_2 || undefined,
-                        city: order?.shipping_address?.city || "",
-                        postcode: order?.shipping_address?.postal_code || "",
-                        countryCode:
-                            order?.shipping_address?.country_code?.toUpperCase() || "",
-                    },
-                    emailAddress: order?.email || undefined,
-                    phoneNumber: order?.shipping_address?.phone || undefined,
-                },
+                recipient,
+                // Medusa loads only the shipping address into the order it hands
+                // a fulfilment provider, so the billing block mirrors the
+                // recipient. Accounts that require billing reject the order
+                // outright without it; accounts that don't simply ignore it.
+                billing: recipient,
                 packages: [
                     {
                         weightInGrams: totalWeight,
