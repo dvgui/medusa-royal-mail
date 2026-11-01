@@ -13,6 +13,12 @@ export type RoyalMailOrder = {
     total: number
     currencyCode?: string
     recipient: RoyalMailRecipient
+    /**
+     * Some Click & Drop accounts reject an order with no billing address
+     * (errors 15/71/95: "Billing address postcode is required for UK orders").
+     * Same shape as the recipient.
+     */
+    billing?: RoyalMailRecipient
     packages: RoyalMailPackage[]
 }
 

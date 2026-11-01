@@ -51,3 +51,12 @@ npx medusa db:sync-links
 4. Click on your Stock Location and select **Create Shipping Option**.
 5. Select the Provider: **`royal-mail-fulfillment_royal-mail-fulfillment`**
 6. Save and test checkout!
+
+## Replacement / resend fulfillments
+
+When fulfillment metadata contains `resend_claim_id`, the provider creates a
+unique Click & Drop reference (`<order>-R-<claim-suffix>`), declares only the
+fulfilled replacement items, and reports zero shipping charged. A replacement
+line may contain `resend_original_line_item_id`; its original line price is used
+as the customs value while the Medusa replacement line remains zero-value for
+accounting.
